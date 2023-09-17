@@ -2,8 +2,8 @@
 Weapon Rankings main script.
 """
 
-
 from datetime import date
+import math
 
 import pandas as pd
 
@@ -18,7 +18,11 @@ ELO_TRACKING = "Elo_Tracking_Log.csv"
 
 # CONSTANTS
 K = 20 # constant factor to determine how much ratings change after a match
-BETA = 400 # higher: increased change in new elo, lower: decreased change in new elo 
+BETA = 400 # higher: increased change in new Elo, lower: decreased change in new Elo 
+ELO_DECAY = 1 # number of points to decay fencers' Elos by every time duel occurs
+ELO_FLOOR = 1 # lower threshold for Elo
+BOUNTY_CONSTANT = K / 2 # Note: due to the way the calculation works, max bounty bonus
+# will be half the above BOUNTY_CONSTANT val.
 
 #####
 class fencer:
@@ -79,7 +83,7 @@ class duel:
         self.duel_log_new = pd.DataFrame()
         self.elo_tracking_log_new = pd.DataFrame()
     
-    def get_new_elos(self):
+    def get_new_elos(self, bounty_constant, elo_floor):
         # calculate the probabilities of expected wins
         winner_expected = 1 / (1 + 10**((self.loser.old_elo - self.winner.old_elo) / self.beta))
         loser_expected = 1 - winner_expected
@@ -88,22 +92,27 @@ class duel:
         winner_new_elo = self.winner.old_elo + self.k * (1 - winner_expected)
         loser_new_elo = self.loser.old_elo + self.k * (0 - loser_expected)
 
-        # add consolation prize for loser
-        if self.loser.level == "beginner":
-            loser_new_elo += 8
-        elif self.loser.level == "experienced":
-            loser_new_elo += 4
-        else:
-            pass
+        # experience bounty bonus
+        bounty_const = bounty_constant
+        # calculate the elo ratios
+        winner_elo_ratio = self.loser.old_elo / self.winner.old_elo
+        loser_elo_ratio = self.winner.old_elo / self.loser.old_elo
+        
+        # calculate added experience bounty value
+        winner_bounty = (1 / (1 + math.e**(- winner_elo_ratio)) - 0.5) * bounty_const
+        loser_bounty = (1 / (1 + math.e**(- loser_elo_ratio)) - 0.5) * bounty_const
 
-        # ensure loser elo does not go below 0
-        if loser_new_elo < 0:
-            loser_new_elo = 0
+        # ensure loser elo does not go below ELO_FLOOR
+        # done for the benefit of the print duel details otherwise it will be an inaccurate 
+        # value if new elo goes below the ELO_FLOOR
+        elo_floor=elo_floor
+        if loser_new_elo < elo_floor:
+            loser_new_elo = elo_floor
         else:
             loser_new_elo = loser_new_elo
         
-        self.winner.new_elo = round(winner_new_elo)
-        self.loser.new_elo = round(loser_new_elo)
+        self.winner.new_elo = round(winner_new_elo + winner_bounty)
+        self.loser.new_elo = round(loser_new_elo + loser_bounty)
 
     def update_elo_ranking(self, fencer):
 
@@ -181,6 +190,11 @@ class duel:
         self.rankings_df_new.to_csv(weapon_ranking_csv, index=False)
         self.duel_log_new.to_csv(duel_log_csv, index=False)
         self.elo_tracking_log_new.to_csv(elo_tracking_csv, index=False)
+    
+    def set_to_floor_elo(self, floor_elo_value):
+        # set current 
+        self.rankings_df_new["CurrentElo"] = [floor_elo_value if x < floor_elo_value 
+                                              else x for x in self.rankings_df_new["CurrentElo"]]
         
 
 def main():
@@ -204,14 +218,21 @@ def main():
         my_duel = duel(winner_name, loser_name, weapon, rankings_df, duel_log_df, elo_tracking_df, K, BETA)
       
         # get new elos
-        my_duel.get_new_elos()
+        my_duel.get_new_elos(bounty_constant=BOUNTY_CONSTANT, elo_floor=ELO_FLOOR)
         
-        # update the rankings
+        # decay elos
         my_duel.rankings_df_new = my_duel.rankings_df_old
+        my_duel.rankings_df_new["CurrentElo"] = my_duel.rankings_df_new["CurrentElo"] - ELO_DECAY
+        # round off the rankings
+        my_duel.rankings_df_new["CurrentElo"] = my_duel.rankings_df_new["CurrentElo"].round()
+
+        # update the duellists' rankings
         my_duel.update_elo_ranking(my_duel.winner)
-        
-        my_duel.update_elo_ranking(my_duel.loser) # TODO: currently breaks when winner is unkranked and loser is
-       
+        my_duel.update_elo_ranking(my_duel.loser)
+
+        #TODO: check for CurrentElo 0 and set any to 1.
+        my_duel.set_to_floor_elo(floor_elo_value=ELO_FLOOR)
+
         # update duel log
         my_duel.update_duel_log()
       

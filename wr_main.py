@@ -23,12 +23,16 @@ ELO_DECAY = 1 # number of points to decay fencers' Elos by every time duel occur
 ELO_FLOOR = 1 # lower threshold for Elo
 BOUNTY_CONSTANT = K / 2 # Note: due to the way the calculation works, max bounty bonus
 # will be half the above BOUNTY_CONSTANT val.
+PROBATION_MATCHES = 5
+PROBATION_MULTIPLIER = 1.25
 
 #####
 class fencer:
     
-    def __init__(self, name, rankings_df):
+    def __init__(self, name, rankings_df, probation_matches, opponent_name, elo_tracking_log, weapon):
         
+        self.elo_tracking_log = elo_tracking_log
+        self.weapon = weapon
         self.name = name
         self.is_ranked = self.name in rankings_df.FencerName.values
      
@@ -38,45 +42,69 @@ class fencer:
             self.old_elo = self.get_col_value(rankings_df, "CurrentElo")
             self.level = self.get_col_value(rankings_df, "Level")
             self.old_duel_number = self.get_col_value(rankings_df, "NumberOfDuels")
-
+            self.old_probation_matches = self.get_col_value(rankings_df, "ProbationMatches")
+           
+        
         else: 
             self.ranked_status = "unranked"
-            self.level = input(f"Please input level (beginner/experienced/advanced) for fencer {self.name}: ")
-            self.old_elo = self.assign_elo(rankings_df)
+            self.level = input(f"Please input level (beginner/experienced) for fencer {self.name}: ")
+            self.old_elo = round(rankings_df["CurrentElo"].median())
             self.original_elo = self.old_elo
             self.old_duel_number = 0
-        
+            self.old_probation_matches = probation_matches
+
+
+        self.is_on_probation = self.old_probation_matches > 0
         self.new_duel_number = self.old_duel_number + 1 
+        self.opponent_name = opponent_name
 
         ### attrs to be updated
         self.new_elo = 0
+        self.new_probation_matches = self.assign_new_probation_matches()
 
+        
 
     def get_col_value(self, rankings_df, column):
         col_value = rankings_df.loc[rankings_df.FencerName == self.name, column].values[0]
         return col_value
     
+    def assign_new_probation_matches(self):
+        # select only fencer entries for elo tracking log  
+        opponent_list = self.elo_tracking_log[
+            self.elo_tracking_log["FencerName"] == self.name]
+        # select only the duel weapon for the above fencer entries
+        opponent_list = opponent_list.loc[opponent_list["Weapon"] == self.weapon]
 
-    def assign_elo(self, rankings_df):
-        elo_quant_dict = {"beginner" : 0.2,
-                        "experienced": 0.5,
-                        "advanced": 0.75}
-        return round(rankings_df.CurrentElo.quantile(q=elo_quant_dict[self.level]))
+        if self.old_probation_matches == 0:
+            return 0
+        
+        elif self.opponent_name in opponent_list.OpponentName.values:
+            return self.old_probation_matches
+        
+        else:
+            return self.old_probation_matches - 1
+
+    # def assign_elo(self, rankings_df): # redundant function
+    #     elo_quant_dict = {"beginner" : 0.2,
+    #                     "experienced": 0.5,
+    #                     "advanced": 0.75}
+    #     return round(rankings_df.CurrentElo.quantile(q=elo_quant_dict[self.level]))
 
 
 class duel:
 
-    def __init__(self, winner, loser, weapon, rankings_df, duel_log, elo_tracking_log, k, beta):
+    def __init__(self, winner, loser, weapon, rankings_df, duel_log, elo_tracking_log, k, beta, probation_matches, probation_multiplier):
 
-        self.winner = fencer(winner, rankings_df)
-        self.loser = fencer(loser, rankings_df)
+        self.elo_tracking_log_old = elo_tracking_log
+        self.winner = fencer(winner, rankings_df, probation_matches, loser, elo_tracking_log, weapon)
+        self.loser = fencer(loser, rankings_df, probation_matches, winner, elo_tracking_log, weapon)
         self.weapon = weapon
         self.rankings_df_old = rankings_df
         self.duel_date = date.today()
         self.duel_log_old = duel_log
-        self.elo_tracking_log_old = elo_tracking_log
         self.k = k
         self.beta = beta
+        self.probation_multipler = probation_multiplier
 
         ### attrs to be updated
         self.rankings_df_new = pd.DataFrame()
@@ -85,12 +113,12 @@ class duel:
     
     def get_new_elos(self, bounty_constant, elo_floor):
         # calculate the probabilities of expected wins
-        winner_expected = 1 / (1 + 10**((self.loser.old_elo - self.winner.old_elo) / self.beta))
+        winner_expected = (1 / (1 + 10**((self.loser.old_elo - self.winner.old_elo) / self.beta))) 
         loser_expected = 1 - winner_expected
         
         # calculate the new elo rankings
-        winner_new_elo = self.winner.old_elo + self.k * (1 - winner_expected)
-        loser_new_elo = self.loser.old_elo + self.k * (0 - loser_expected)
+        winner_new_elo = self.winner.old_elo + (self.k * (1 - winner_expected)) * self.probation_mult(self.winner)
+        loser_new_elo = self.loser.old_elo + (self.k * (0 - loser_expected)) * self.probation_mult(self.loser)
 
         # experience bounty bonus
         bounty_const = bounty_constant
@@ -114,6 +142,12 @@ class duel:
         self.winner.new_elo = round(winner_new_elo + winner_bounty)
         self.loser.new_elo = round(loser_new_elo + loser_bounty)
 
+    def probation_mult(self, fencer):
+        if fencer.is_on_probation:
+            return self.probation_multipler
+        else:
+            return 1
+
     def update_elo_ranking(self, fencer):
 
         # distinguish between ranked and unkranked fencers.
@@ -127,6 +161,8 @@ class duel:
             self.rankings_df_new.loc[mask, 'CurrentElo'] = fencer.new_elo 
             # Update the fencer's duel number in the DataFrame
             self.rankings_df_new.loc[mask, 'NumberOfDuels'] = fencer.new_duel_number
+            # Update the fencer's probation matches in the DataFrame
+            self.rankings_df_new.loc[mask, "ProbationMatches"] = fencer.new_probation_matches
 
         else:
             unranked_fencer_deets = {"FencerName": fencer.name,
@@ -134,7 +170,9 @@ class duel:
                                     "OriginalElo": fencer.old_elo, 
                                     "CurrentElo": fencer.new_elo,
                                     "Level": fencer.level,
-                                    "NumberOfDuels": fencer.new_duel_number}
+                                    "NumberOfDuels": fencer.new_duel_number,
+                                    "ProbationMatches": fencer.new_probation_matches
+                                    }
 
             self.rankings_df_new = self.rankings_df_new.append(unranked_fencer_deets, ignore_index=True)
         
@@ -156,6 +194,7 @@ class duel:
         fencers = (self.winner, self.loser)
         for fencer in fencers:
             update_elo_tracking_deets = {"FencerName": fencer.name, 
+                                        "OpponentName": fencer.opponent_name,
                                         "Weapon": self.weapon, 
                                         "OriginalWeaponElo": fencer.original_elo,
                                         "OldWeaponElo": fencer.old_elo, 
@@ -176,6 +215,7 @@ class duel:
         print("Level: ", self.winner.level)
         print(f"Winner's Elo will be updated from {self.winner.old_elo} to {self.winner.new_elo}.")
         print(f"Number of {self.weapon} duels completed: ", self.winner.new_duel_number)
+        print("Number of probation matches to complete: ", self.winner.new_probation_matches)
 
         # print loser details
         print("\nLoser's details")
@@ -184,6 +224,7 @@ class duel:
         print("Level: ", self.loser.level)
         print(f"Loser's Elo will be updated from {self.loser.old_elo} to {self.loser.new_elo}.")
         print(f"Number of {self.weapon} duels completed: ", self.loser.new_duel_number)
+        print("Number of probation matches to complete: ", self.loser.new_probation_matches)
 
     def update_csv_files(self, weapon_ranking_csv, duel_log_csv, elo_tracking_csv):
         # overwrite existing files with their updated versions.
@@ -215,7 +256,7 @@ def main():
         elo_tracking_df = pd.read_csv(ELO_TRACKING)
       
         # initialise the duel
-        my_duel = duel(winner_name, loser_name, weapon, rankings_df, duel_log_df, elo_tracking_df, K, BETA)
+        my_duel = duel(winner_name, loser_name, weapon, rankings_df, duel_log_df, elo_tracking_df, K, BETA, PROBATION_MATCHES, PROBATION_MULTIPLIER)
       
         # get new elos
         my_duel.get_new_elos(bounty_constant=BOUNTY_CONSTANT, elo_floor=ELO_FLOOR)

@@ -23,7 +23,8 @@ ELO_DECAY = 1 # number of points to decay fencers' Elos by every time duel occur
 ELO_FLOOR = 1 # lower threshold for Elo
 BOUNTY_CONSTANT = K / 2 # Note: due to the way the calculation works, max bounty bonus
 # will be half the above BOUNTY_CONSTANT val.
-PROBATION_MATCHES = 5 # number of probation matches a new fencer must complete.
+PROBATION_MATCHES = 0.4 # number of probation matches a new fencer must complete equal to set
+# proportion of total fencers in particular weapon raking
 PROBATION_MULTIPLIER = 1.25 # multiplication modifier for elo calculation for new fencers on probation
 WS_ELORATIO_THRESH = 0.75 # loserElo / winnerElo cut-off for winstreak alteration
 
@@ -57,7 +58,7 @@ class fencer:
             self.old_elo = round(rankings_df["CurrentElo"].median(), 1)
             self.original_elo = self.old_elo
             self.old_duel_number = 0
-            self.old_probation_matches = probation_matches
+            self.old_probation_matches = round(probation_matches * rankings_df.shape[0])
             self.old_winstreak = 0
             self.longest_winstreak = 0
 

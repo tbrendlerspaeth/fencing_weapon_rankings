@@ -18,15 +18,15 @@ ELO_TRACKING = "Elo_Tracking_Log.csv"
 
 # CONSTANTS
 K = 20 # constant factor to determine how much ratings change after a match
-BETA = 400 # higher: increased change in new Elo, lower: decreased change in new Elo 
-ELO_DECAY = 1 # number of points to decay fencers' Elos by every time duel occurs
+BETA = 800 # lower: increased change in new Elo, higher: decreased change in new Elo 
+ELO_DECAY = K*0.1 # number of points to decay fencers' Elos by every time duel occurs
 ELO_FLOOR = 1 # lower threshold for Elo
-BOUNTY_CONSTANT = K / 2 # Note: due to the way the calculation works, max bounty bonus
+BOUNTY_CONSTANT = K / 1.5 # Note: due to the way the calculation works, max bounty bonus
 # will be half the above BOUNTY_CONSTANT val.
 PROBATION_MATCHES = 0.4 # number of probation matches a new fencer must complete equal to set
-# proportion of total fencers in particular weapon raking
-PROBATION_MULTIPLIER = 1.25 # multiplication modifier for elo calculation for new fencers on probation
-WS_ELORATIO_THRESH = 0.75 # loserElo / winnerElo cut-off for winstreak alteration
+# proportion of total fencers in particular weapon ranking
+PROBATION_MULTIPLIER = 0.75 # multiplication modifier for elo calculation for new fencers on probation
+WS_ELORATIO_THRESH = 0.6 # loserElo / winnerElo cut-off for winstreak alteration
 
 
 #####
@@ -43,8 +43,8 @@ class fencer:
         # set all fencer attributes from weapon ranking if ranked
         if self.is_ranked:
             self.ranked_status = "ranked"
-            self.original_elo = self.get_col_value(rankings_df, "OriginalElo")
-            self.old_elo = self.get_col_value(rankings_df, "CurrentElo")
+            self.original_elo = self.get_col_value(rankings_df, "OriginalRankingPoints")
+            self.old_elo = self.get_col_value(rankings_df, "CurrentRankingPoints")
             self.level = self.get_col_value(rankings_df, "Level")
             self.old_duel_number = self.get_col_value(rankings_df, "NumberOfDuels")
             self.old_probation_matches = self.get_col_value(rankings_df, "ProbationMatches")
@@ -55,7 +55,7 @@ class fencer:
         else: 
             self.ranked_status = "unranked"
             self.level = input(f"Please input level (beginner/experienced) for fencer {self.name}: ")
-            self.old_elo = round(rankings_df["CurrentElo"].median(), 1)
+            self.old_elo = round(rankings_df["CurrentRankingPoints"].median(), 1)
             self.original_elo = self.old_elo
             self.old_duel_number = 0
             self.old_probation_matches = round(probation_matches * rankings_df.shape[0])
@@ -164,7 +164,7 @@ class duel:
             mask = self.rankings_df_new["FencerName"] == fencer.name
             
             # Update the fencer's elo in weapon rankings DataFrame
-            self.rankings_df_new.loc[mask, 'CurrentElo'] = fencer.new_elo 
+            self.rankings_df_new.loc[mask, 'CurrentRankingPoints'] = fencer.new_elo 
             # Update the fencer's duel number in weapon rankings DataFrame
             self.rankings_df_new.loc[mask, 'NumberOfDuels'] = fencer.new_duel_number
             # Update the fencer's probation matches in weapon rankings DataFrame
@@ -178,8 +178,8 @@ class duel:
         else:
             unranked_fencer_deets = {"FencerName": fencer.name,
                                     "Weapon": self.weapon,
-                                    "OriginalElo": fencer.old_elo, 
-                                    "CurrentElo": fencer.new_elo,
+                                    "OriginalRankingPoints": fencer.old_elo, 
+                                    "CurrentRankingPoints": fencer.new_elo,
                                     "Level": fencer.level,
                                     "NumberOfDuels": fencer.new_duel_number,
                                     "ProbationMatches": fencer.new_probation_matches,
@@ -190,7 +190,7 @@ class duel:
             self.rankings_df_new = self.rankings_df_new.append(unranked_fencer_deets, ignore_index=True)
         
         # sort df by rankings in descending order
-        self.rankings_df_new.sort_values('CurrentElo', ascending=False, inplace=True)
+        self.rankings_df_new.sort_values('CurrentRankingPoints', ascending=False, inplace=True)
 
     def update_winstreaks(self):
         # Determine the new winstreak values for the both fencers.
@@ -283,8 +283,8 @@ class duel:
     
     def set_to_floor_elo(self, floor_elo_value):
         # set current 
-        self.rankings_df_new["CurrentElo"] = [floor_elo_value if x < floor_elo_value 
-                                              else x for x in self.rankings_df_new["CurrentElo"]]
+        self.rankings_df_new["CurrentRankingPoints"] = [floor_elo_value if x < floor_elo_value 
+                                              else x for x in self.rankings_df_new["CurrentRankingPoints"]]
         
 
 def main():
@@ -314,16 +314,16 @@ def main():
         
         # decay elos
         my_duel.rankings_df_new = my_duel.rankings_df_old
-        my_duel.rankings_df_new["CurrentElo"] = my_duel.rankings_df_new["CurrentElo"] - ELO_DECAY
+        my_duel.rankings_df_new["CurrentRankingPoints"] = my_duel.rankings_df_new["CurrentRankingPoints"] - ELO_DECAY
         
         # round off the rankings
-        my_duel.rankings_df_new["CurrentElo"] = my_duel.rankings_df_new["CurrentElo"].round(decimals=1)
+        my_duel.rankings_df_new["CurrentRankingPoints"] = my_duel.rankings_df_new["CurrentRankingPoints"].round(decimals=1)
 
         # update the duellists' rankings
         my_duel.update_weapon_ranking(my_duel.winner)
         my_duel.update_weapon_ranking(my_duel.loser)
 
-        #TODO: check for CurrentElo 0 and set any to 1.
+        #TODO: check for CurrentRankingPoints 0 and set any to 1.
         my_duel.set_to_floor_elo(floor_elo_value=ELO_FLOOR)
 
         # update duel log

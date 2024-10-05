@@ -46,6 +46,7 @@ class fencer:
             self.original_elo = self.get_col_value(rankings_df, "OriginalRankingPoints")
             self.old_elo = self.get_col_value(rankings_df, "CurrentRankingPoints")
             self.level = self.get_col_value(rankings_df, "Level")
+            self.category = self.get_col_value(rankings_df, "Category")
             self.old_duel_number = self.get_col_value(rankings_df, "NumberOfDuels")
             self.old_probation_matches = self.get_col_value(rankings_df, "ProbationMatches")
             self.old_winstreak = self.get_col_value(rankings_df, "CurrentWinstreak")
@@ -55,6 +56,8 @@ class fencer:
         else: 
             self.ranked_status = "unranked"
             self.level = input(f"Please input level (beginner/experienced) for fencer {self.name}: ")
+            self.category = input(f"Please input category for fencer {self.name}: ")
+            # Assign new fencer median as starting ranking points.
             self.old_elo = round(rankings_df["CurrentRankingPoints"].median(), 1)
             self.original_elo = self.old_elo
             self.old_duel_number = 0
@@ -181,6 +184,7 @@ class duel:
                                     "OriginalRankingPoints": fencer.old_elo, 
                                     "CurrentRankingPoints": fencer.new_elo,
                                     "Level": fencer.level,
+                                    "Category": fencer.category,
                                     "NumberOfDuels": fencer.new_duel_number,
                                     "ProbationMatches": fencer.new_probation_matches,
                                     "CurrentWinstreak": fencer.new_winstreak,
@@ -258,6 +262,7 @@ class duel:
         print("Name: ", self.winner.name)
         print("Ranked status: ", self.winner.ranked_status)
         print("Level: ", self.winner.level)
+        print("Category: ", self.winner.category)
         print(f"Winner's Elo will be updated from {self.winner.old_elo} to {self.winner.new_elo}.")
         print(f"Number of {self.weapon} duels completed: ", self.winner.new_duel_number)
         print("Number of probation matches to complete: ", self.winner.new_probation_matches)
@@ -269,6 +274,7 @@ class duel:
         print("Name: ", self.loser.name)
         print("Ranked status: ", self.loser.ranked_status)
         print("Level: ", self.loser.level)
+        print("Category: ", self.loser.category)
         print(f"Loser's Elo will be updated from {self.loser.old_elo} to {self.loser.new_elo}.")
         print(f"Number of {self.weapon} duels completed: ", self.loser.new_duel_number)
         print("Number of probation matches to complete: ", self.loser.new_probation_matches)

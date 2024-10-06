@@ -18,14 +18,15 @@ ELO_TRACKING = "Elo_Tracking_Log.csv"
 
 # CONSTANTS
 K = 20 # constant factor to determine how much ratings change after a match
-BETA = 800 # lower: increased change in new Elo, higher: decreased change in new Elo 
-ELO_DECAY = K*0.1 # number of points to decay fencers' Elos by every time duel occurs
+BETA = 1000 # lower: increased change in new Elo, higher: decreased change in new Elo 
+# ELO_DECAY = K*0.1 # number of points to decay fencers' Elos by every time duel occurs
+# Elo decay now determined by decay_elos() duel method.
 ELO_FLOOR = 1 # lower threshold for Elo
 BOUNTY_CONSTANT = K / 1.5 # Note: due to the way the calculation works, max bounty bonus
 # will be half the above BOUNTY_CONSTANT val.
 PROBATION_MATCHES = 0.4 # number of probation matches a new fencer must complete equal to set
 # proportion of total fencers in particular weapon ranking
-PROBATION_MULTIPLIER = 0.75 # multiplication modifier for elo calculation for new fencers on probation
+PROBATION_MULTIPLIER = 0.5 # multiplication modifier for elo calculation for new fencers on probation
 WS_ELORATIO_THRESH = 0.6 # loserElo / winnerElo cut-off for winstreak alteration
 
 
@@ -156,6 +157,24 @@ class duel:
             return self.probation_multiplier
         else:
             return 1
+        
+
+    def decay_elos(self, x):
+        # Get ranking point quantiles.
+        quant_0_5 = self.rankings_df_old["CurrentRankingPoints"].quantile(0.5)
+        quant_0_7 = self.rankings_df_old["CurrentRankingPoints"].quantile(0.7)
+        quant_0_9 = self.rankings_df_old["CurrentRankingPoints"].quantile(0.9)
+
+        # Apply decay
+        if x <= quant_0_5:
+            return x - self.k * 0.02
+        elif x > quant_0_9:
+            return x - self.k * 0.2
+        elif x > quant_0_7:
+            return x - self.k * 0.1 
+        else:
+            return x - self.k * 0.05
+
 
     def update_weapon_ranking(self, fencer):
 
@@ -224,7 +243,7 @@ class duel:
 
     def ws_multiplier(self):
         # Calculate the winstreak elo multiplier for the winner
-        return 1 + (1 / (1 + math.e**(-(self.winner.new_winstreak / self.k))) - 0.5)
+        return 1 + (1 / (1 + math.e**(-(self.winner.old_winstreak / self.k))) - 0.5)
 
     def update_duel_log(self):
        
@@ -318,10 +337,11 @@ def main():
         # get new elos
         my_duel.get_new_elos(bounty_constant=BOUNTY_CONSTANT, elo_floor=ELO_FLOOR)
         
-        # decay elos
+        # decay elos #TODO: can't the below be handled by a single class method?
         my_duel.rankings_df_new = my_duel.rankings_df_old
-        my_duel.rankings_df_new["CurrentRankingPoints"] = my_duel.rankings_df_new["CurrentRankingPoints"] - ELO_DECAY
-        
+        #my_duel.rankings_df_new["CurrentRankingPoints"] = my_duel.rankings_df_new["CurrentRankingPoints"] - ELO_DECAY
+        my_duel.rankings_df_new["CurrentRankingPoints"] = my_duel.rankings_df_new["CurrentRankingPoints"].apply(my_duel.decay_elos)
+
         # round off the rankings
         my_duel.rankings_df_new["CurrentRankingPoints"] = my_duel.rankings_df_new["CurrentRankingPoints"].round(decimals=1)
 
@@ -329,7 +349,7 @@ def main():
         my_duel.update_weapon_ranking(my_duel.winner)
         my_duel.update_weapon_ranking(my_duel.loser)
 
-        #TODO: check for CurrentRankingPoints 0 and set any to 1.
+        # Check for CurrentRankingPoints below the point floor and set them to it.
         my_duel.set_to_floor_elo(floor_elo_value=ELO_FLOOR)
 
         # update duel log

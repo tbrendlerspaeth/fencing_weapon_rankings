@@ -161,19 +161,22 @@ class duel:
 
     def decay_elos(self, x):
         # Get ranking point quantiles.
+        quant_0_3 = self.rankings_df_old["CurrentRankingPoints"].quantile(0.3)
         quant_0_5 = self.rankings_df_old["CurrentRankingPoints"].quantile(0.5)
         quant_0_7 = self.rankings_df_old["CurrentRankingPoints"].quantile(0.7)
         quant_0_9 = self.rankings_df_old["CurrentRankingPoints"].quantile(0.9)
 
         # Apply decay
-        if x <= quant_0_5:
-            return x - self.k * 0.02
+        if x <= quant_0_3:
+            return x - ((self.k / self.rankings_df_old.shape[0]) * 0.3)
         elif x > quant_0_9:
-            return x - self.k * 0.2
+            return x - ((self.k / self.rankings_df_old.shape[0]) * 1.6)
         elif x > quant_0_7:
-            return x - self.k * 0.1 
+            return x - ((self.k / self.rankings_df_old.shape[0]) * 1.2) 
+        elif x > quant_0_5:
+            return x - ((self.k / self.rankings_df_old.shape[0]) * 0.8)     
         else:
-            return x - self.k * 0.05
+            return x - ((self.k / self.rankings_df_old.shape[0]) * 0.5) 
 
 
     def update_weapon_ranking(self, fencer):
@@ -252,7 +255,10 @@ class duel:
                             "LoserName": self.loser.name,	
                             "Weapon": self.weapon,
                             "DuelDate": self.duel_date}
-        self.duel_log_new = self.duel_log_new.append(update_duel_deets, ignore_index=True)
+        #self.duel_log_new = self.duel_log_new.append(update_duel_deets, ignore_index=True)
+        self.duel_log_new = pd.concat([self.duel_log_new, pd.DataFrame([update_duel_deets])], 
+        ignore_index = True)
+
 
     def update_elo_tracking_log(self):
         # update the tracking low with duel details
@@ -269,7 +275,8 @@ class duel:
                                         "DuelDate": self.duel_date,
                                         "CurrentWinstreak": fencer.new_winstreak,
                                         "LongestWinstreak": fencer.longest_winstreak}
-            self.elo_tracking_log_new = self.elo_tracking_log_new.append(update_elo_tracking_deets, ignore_index=True)
+           #self.elo_tracking_log_new = self.elo_tracking_log_new.append(update_elo_tracking_deets, ignore_index=True)
+            self.elo_tracking_log_new = pd.concat([self.elo_tracking_log_new, pd.DataFrame([update_elo_tracking_deets])], ignore_index = True)
 
     
     def print_duel_deets(self):

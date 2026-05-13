@@ -24,7 +24,7 @@ BETA = 1000 # lower: increased change in new Elo, higher: decreased change in ne
 ELO_FLOOR = 1 # lower threshold for Elo
 BOUNTY_CONSTANT = K / 1.5 # Note: due to the way the calculation works, max bounty bonus
 # will be half the above BOUNTY_CONSTANT val.
-PROBATION_MATCHES = 0.4 # number of probation matches a new fencer must complete equal to set
+PROBATION_MATCHES = 0.6 # number of probation matches a new fencer must complete equal to set
 # proportion of total fencers in particular weapon ranking
 PROBATION_MULTIPLIER = 1.1 # multiplication modifier for elo calculation for new fencers on probation
 WS_ELORATIO_THRESH = 0.5 # loserElo / winnerElo cut-off for winstreak alteration
